@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema de Mapas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet-measure/dist/leaflet-measure.css" />
+<script src="https://unpkg.com/leaflet-measure/dist/leaflet-measure.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<style>
+:root {
+  --red: #C0392B;
+  --red-dark: #922B21;
+  --red-light: #E74C3C;
+  --accent: #F39C12;
+  --bg: #0D0D0D;
+  --surface: #161616;
+  --surface2: #1E1E1E;
+  --surface3: #252525;
+  --border: #2A2A2A;
+  --border2: #333;
+  --text: #F0EDE8;
+  --text2: #9A9590;
+  --text3: #5A5550;
+  --success: #27AE60;
+  --font-head: 'Barlow Condensed', sans-serif;
+  --font-body: 'Barlow', sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body { font-family: var(--font-body); background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+
+/* ── SIDEBAR ── */
+#sidebar { width: 340px; min-width: 280px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; z-index: 100; position: relative; }
+#sidebar-header { background: var(--red-dark); padding: 18px 20px 14px; border-bottom: 3px solid var(--red); flex-shrink: 0; position: relative; }
+
+.config-btn { position: absolute; top: 18px; right: 20px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s; }
+.config-btn:hover { background: rgba(0,0,0,0.4); }
+
+.logo-line { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; padding-right: 30px; }
+.logo-badge { background: var(--red); border: 2px solid rgba(255,255,255,0.2); border-radius: 6px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-family: var(--font-head); font-size: 18px; font-weight: 700; color: white; letter-spacing: -1px; flex-shrink: 0; }
+.logo-text h1 { font-family: var(--font-head); font-size: 20px; font-weight: 700; letter-spacing: 0.5px; color: white; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.logo-text p { font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 400; letter-spacing: 1px; text-transform: uppercase; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.status-bar { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex-shrink: 0; transition: background 0.3s; }
+.status-dot.active { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.status-dot.loading { background: var(--accent); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.status-text { font-size: 11px; color: rgba(255,255,255,0.5); flex: 1; }
+
+/* ── TABS ── */
+#tab-bar { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab-btn { flex: 1; background: none; border: none; color: var(--text3); font-family: var(--font-head); font-size: 13px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; padding: 11px 8px; cursor: pointer; transition: all 0.2s; border-bottom: 2px solid transparent; position: relative; top: 1px; }
+.tab-btn:hover { color: var(--text2); background: var(--surface2); }
+.tab-btn.active { color: var(--red-light); border-bottom-color: var(--red); background: var(--surface2); }
+
+/* ── PANEL CAMADAS ── */
+#panel-layers { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+
+.load-zone { border: 1.5px dashed var(--border2); border-radius: 8px; padding: 16px 10px; text-align: center; background: var(--surface2); margin-bottom: 4px; transition: border-color 0.2s; }
+.load-zone.dragover { border-color: var(--red); background: rgba(192,57,43,0.05); }
+.load-zone p { font-size: 12px; color: var(--text2); line-height: 1.5; margin-bottom: 10px;}
+.load-zone strong { color: var(--text); }
+.load-btns { display: flex; gap: 8px; justify-content: center; }
+.load-btn { background: var(--surface3); border: 1px solid var(--border2); border-radius: 6px; color: var(--text); font-size: 12px; padding: 6px 12px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+.load-btn:hover { border-color: var(--red); background: var(--surface); }
+
+.section-label { font-family: var(--font-head); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text3); padding: 4px 0 2px; border-bottom: 1px solid var(--border); margin-bottom: 4px; flex-shrink: 0; }
+
+/* Categorias */
+.category-box { margin-bottom: 10px; }
+.category-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: background 0.2s; margin-bottom: 4px;}
+.category-header:hover { background: var(--surface3); }
+.category-title { font-family: var(--font-head); font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px;}
+.category-dot { width: 10px; height: 10px; border-radius: 50%; }
+.category-items { display: flex; flex-direction: column; gap: 4px; padding-left: 14px; border-left: 2px solid var(--border2); margin-left: 16px; margin-top: 4px; }
+
+.layer-item { background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 6px 8px; display: flex; align-items: flex-start; gap: 10px; transition: all 0.2s; position: relative; }
+.layer-item:hover { background: var(--surface2); border-color: var(--border); }
+.layer-item.active-layer { background: rgba(255,255,255,0.03); border-color: var(--border2); }
+
+.layer-toggle { width: 30px; height: 16px; background: var(--border2); border-radius: 10px; position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0; margin-top: 2px; }
+.layer-toggle::after { content: ''; position: absolute; width: 10px; height: 10px; background: var(--text2); border-radius: 50%; top: 3px; left: 3px; transition: all 0.2s; }
+.layer-toggle.on { background: var(--red); }
+.layer-toggle.on::after { left: 17px; background: white; }
+
+.layer-info { flex: 1; min-width: 0; }
+.layer-name { font-family: var(--font-head); font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.layer-actions { display: flex; gap: 4px; align-items: center; margin-top: 4px; }
+.layer-btn { background: var(--surface3); border: 1px solid var(--border2); border-radius: 4px; color: var(--text2); font-size: 10px; padding: 2px 6px; cursor: pointer; transition: all 0.15s; font-family: var(--font-body); }
+.layer-btn:hover { background: var(--red); border-color: var(--red); color: white; }
+
+/* ── PANEL DESCRIÇÕES ── */
+#panel-desc { flex: 1; overflow-y: auto; padding: 12px; display: none; flex-direction: column; gap: 10px; }
+.form-group { margin-bottom: 10px; }
+.form-group label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text3); display: block; margin-bottom: 6px; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; background: var(--surface3); border: 1px solid var(--border2); border-radius: 6px; color: var(--text); font-family: var(--font-body); font-size: 13px; padding: 8px 10px; outline: none; transition: border-color 0.2s; }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--red); }
+.form-group textarea { min-height: 80px; resize: vertical; }
+.form-group input[type="color"] { padding: 2px 5px; height: 36px; cursor: pointer; }
+
+.desc-form { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.save-btn { width: 100%; background: var(--red); border: none; border-radius: 6px; color: white; font-family: var(--font-head); font-size: 14px; font-weight: 600; letter-spacing: 0.5px; padding: 10px; cursor: pointer; transition: background 0.2s; }
+.save-btn:hover { background: var(--red-light); }
+.save-btn:active { background: var(--red-dark); }
+
+.desc-list { display: flex; flex-direction: column; gap: 8px; }
+.desc-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; position: relative; }
+.desc-card-title { font-family: var(--font-head); font-size: 14px; font-weight: 600; color: var(--red-light); margin-bottom: 3px; }
+.desc-card-layer { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text3); margin-bottom: 8px; }
+.desc-card-text { font-size: 13px; color: var(--text2); line-height: 1.6; white-space: pre-wrap; }
+.desc-card-del { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--text3); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 5px; border-radius: 4px; }
+.desc-card-del:hover { color: var(--red-light); background: rgba(192,57,43,0.15); }
+
+/* ── MAP ── */
+#map-container { flex: 1; position: relative; overflow: hidden; }
+#map { width: 100%; height: 100%; }
+.leaflet-container { background: #1a1a1a; font-family: var(--font-body); }
+.leaflet-control-zoom a { background: var(--surface2) !important; border-color: var(--border2) !important; color: var(--text) !important; }
+.leaflet-control-zoom a:hover { background: var(--surface3) !important; color: var(--red-light) !important; }
+.leaflet-control-attribution { background: rgba(13,13,13,0.85) !important; color: var(--text3) !important; font-size: 10px !important; }
+.leaflet-control-attribution a { color: var(--text2) !important; }
+
+/* ── MEDIÇÃO (RÉGUA) ── */
+.leaflet-control-measure { background: var(--surface) !important; border: 1px solid var(--border2) !important; color: var(--text) !important; border-radius: 8px !important; }
+.leaflet-control-measure h3 { color: var(--red-light) !important; font-family: var(--font-head); }
+.leaflet-control-measure a, .leaflet-control-measure a:hover { color: var(--accent) !important; }
+.leaflet-control-measure a.start { color: var(--red-light) !important; }
+.leaflet-control-measure .tasks, .leaflet-control-measure .results { border-color: var(--border2) !important; }
+.leaflet-control-measure .js-toggle { background-color: var(--surface2) !important; border-radius: 8px; }
+
+/* ── MAP TOP BAR ── */
+#map-topbar { position: absolute; top: 12px; left: 12px; right: 52px; z-index: 500; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+.map-pill { background: rgba(13,13,13,0.88); border: 1px solid var(--border2); border-radius: 20px; padding: 6px 14px; font-size: 12px; color: var(--text2); pointer-events: auto; display: flex; align-items: center; gap: 6px; backdrop-filter: blur(4px); }
+.map-pill .count { background: var(--red); color: white; font-family: var(--font-head); font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 10px; }
+
+/* ── LEGEND ── */
+#map-legend { position: absolute; bottom: 30px; right: 12px; z-index: 500; background: rgba(13,13,13,0.9); border: 1px solid var(--border2); border-radius: 8px; padding: 12px 14px; min-width: 140px; backdrop-filter: blur(4px); display: none;}
+.legend-title { font-family: var(--font-head); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text3); margin-bottom: 8px; }
+.legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); margin-bottom: 5px; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── MODALS (AJUDA, LOGIN, CONFIG) ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 12px; padding: 24px; max-width: 460px; width: 92%; position: relative; max-height: 90vh; overflow-y: auto;}
+.modal h2 { font-family: var(--font-head); font-size: 22px; font-weight: 700; color: var(--red-light); margin-bottom: 6px; }
+.modal p { font-size: 13px; color: var(--text2); line-height: 1.7; margin-bottom: 12px; }
+.modal-close { position: absolute; top: 14px; right: 14px; background: none; border: none; color: var(--text3); font-size: 22px; cursor: pointer; line-height: 1; }
+.modal-close:hover { color: var(--text); }
+.modal-btn { background: var(--red); border: none; border-radius: 6px; color: white; font-family: var(--font-head); font-size: 14px; font-weight: 600; padding: 10px 20px; cursor: pointer; transition: background 0.2s; margin-right: 8px; margin-top: 10px; }
+.modal-btn:hover { background: var(--red-light); }
+.modal-btn.secondary { background: var(--surface3); border: 1px solid var(--border2); color: var(--text); }
+.modal-btn.secondary:hover { background: var(--surface2); }
+
+/* ── TOAST ── */
+#toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px; padding: 10px 18px; font-size: 13px; color: var(--text); z-index: 2000; transition: transform 0.3s ease; pointer-events: none; white-space: nowrap; }
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.success { border-left: 3px solid var(--success); }
+#toast.error { border-left: 3px solid var(--red); }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--red); }
+.leaflet-popup-content-wrapper { background: var(--surface) !important; border: 1px solid var(--border2) !important; border-radius: 8px !important; color: var(--text) !important; }
+.leaflet-popup-tip { background: var(--surface) !important; }
+.leaflet-popup-content h3 { font-family: var(--font-head); font-size: 16px; font-weight: 700; color: var(--red-light); margin-bottom: 6px; }
+
+#file-input, #folder-input { display: none; }
+</style>
+</head>
+<body>
+
+<input type="file" id="file-input" accept=".kmz,.kml,.json" multiple>
+<input type="file" id="folder-input" webkitdirectory directory multiple>
+
+<aside id="sidebar">
+  <div id="sidebar-header">
+    <button class="config-btn" onclick="openLoginModal()" title="Configurações">⚙️</button>
+    <div class="logo-line">
+      <div class="logo-badge" id="ui-logo-badge">L</div>
+      <div class="logo-text">
+        <h1 id="ui-title">LINHA LESTE</h1>
+        <p id="ui-subtitle">Metrô de Fortaleza</p>
+      </div>
+    </div>
+    <div class="status-bar">
+      <div class="status-dot" id="status-dot"></div>
+      <span class="status-text" id="status-text">Nenhum arquivo carregado</span>
+    </div>
+  </div>
+
+  <div id="tab-bar">
+    <button class="tab-btn active" data-tab="layers" onclick="switchTab('layers', this)">Camadas</button>
+    <button class="tab-btn" data-tab="desc" onclick="switchTab('desc', this)">Descrições</button>
+    <button class="tab-btn" data-tab="info" onclick="openHelpModal()">Ajuda</button>
+  </div>
+
+  <div id="panel-layers" style="display:flex">
+    <div class="load-zone" id="load-zone">
+      <p><strong>Arraste arquivos ou pastas aqui</strong><br><span style="color:var(--text3); font-size:11px;">Arraste um 'config_mapa.json' para auto-configurar</span></p>
+      <div class="load-btns">
+        <button class="load-btn" onclick="document.getElementById('file-input').click()">📄 Arquivos</button>
+        <button class="load-btn" onclick="document.getElementById('folder-input').click()">📁 Pastas</button>
+      </div>
+    </div>
+    <div class="section-label" id="layers-label" style="display:none">Categorias & Camadas</div>
+    <div id="layer-list"></div>
+  </div>
+
+  <div id="panel-desc">
+    <div class="desc-form">
+      <div class="form-group">
+        <label>Camada relacionada</label>
+        <select id="desc-layer-sel"><option value="">— Selecione uma camada —</option></select>
+      </div>
+      <div class="form-group">
+        <label>Título</label>
+        <input type="text" id="desc-title" placeholder="Ex: Estação Parangaba">
+      </div>
+      <div class="form-group">
+        <label>Descrição / Observação</label>
+        <textarea id="desc-text" placeholder="Insira informações..."></textarea>
+      </div>
+      <button class="save-btn" onclick="saveDesc()">Salvar Descrição</button>
+    </div>
+    <div class="section-label">Descrições salvas</div>
+    <div class="desc-list" id="desc-list"></div>
+  </div>
+</aside>
+
+<div id="map-container">
+  <div id="map-topbar">
+    <div class="map-pill">
+      <span id="layer-count-label">0 camadas</span>
+      <span class="count" id="layer-count">0</span>
+    </div>
+    <div class="map-pill" id="ui-map-pill">Linha Leste — Fortaleza / CE</div>
+  </div>
+  <div id="map"></div>
+  <div id="map-legend"></div>
+</div>
+
+<div id="help-modal" class="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('help-modal')">×</button>
+    <h2>Como usar o Sistema</h2>
+    <p><strong>1. Categorias Automáticas:</strong> Use o botão "Pastas". O sistema criará categorias usando o nome das suas pastas.</p>
+    <p><strong>2. Modo Pré-Configurado (Pen-drive):</strong> Vá em Configurações > Exportar Dados. Ele vai baixar um arquivo <code>config_mapa.json</code>. Ao enviar esse arquivo para alguém junto com os KMZs, basta a pessoa arrastar o `.json` para a tela que tudo (cores, descrições, textos) será pré-configurado sozinho!</p>
+    <p><strong>3. Descrições Automáticas:</strong> Se o seu KML já possuir uma tag <code>&lt;description&gt;</code>, o sistema vai preencher as Descrições automaticamente ao importar.</p>
+    <button class="modal-btn" onclick="closeModal('help-modal')">Entendi</button>
+  </div>
+</div>
+
+<div id="login-modal" class="modal-overlay">
+  <div class="modal" style="max-width: 320px;">
+    <button class="modal-close" onclick="closeModal('login-modal')">×</button>
+    <h2>Acesso Restrito</h2>
+    <p style="margin-bottom: 15px;">Insira a senha para alterar o sistema e gerar arquivos de pré-configuração.</p>
+    <div class="form-group">
+      <label>Senha de Configuração</label>
+      <input type="password" id="login-password" placeholder="Senha: admin" onkeypress="if(event.key==='Enter') attemptLogin()">
+    </div>
+    <button class="save-btn" onclick="attemptLogin()" style="margin-top: 5px;">Acessar Painel</button>
+  </div>
+</div>
+
+<div id="config-modal" class="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('config-modal')">×</button>
+    <h2>Configurações do Sistema</h2>
+    <p>Personalize as cores e gere o arquivo de backup/pré-configuração.</p>
+    
+    <div style="display:flex; gap:10px;">
+      <div class="form-group" style="width: 80px;">
+        <label>Sigla</label>
+        <input type="text" id="cfg-logo" placeholder="Ex: L" maxlength="3">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label>Título Principal</label>
+        <input type="text" id="cfg-title" placeholder="Ex: LINHA LESTE">
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <label>Subtítulo</label>
+      <input type="text" id="cfg-subtitle" placeholder="Ex: Metrô de Fortaleza">
+    </div>
+
+    <div class="form-group">
+      <label>Cor Principal (Destaque)</label>
+      <input type="color" id="cfg-color" value="#C0392B">
+    </div>
+
+    <div style="display:flex; gap:10px; margin-top:20px; border-top: 1px solid var(--border); padding-top: 15px;">
+      <button class="modal-btn" onclick="saveConfig()" style="flex:1; margin-top:0;">Salvar Visual</button>
+      <button class="modal-btn secondary" onclick="exportConfigBackup()" style="flex:1; margin-top:0;" title="Gera o arquivo config_mapa.json">📥 Exportar Dados</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─── STATE E CONFIG ──────────────────────────────────────────────
+const state = {
+  layers: [], // { id, name, category, size, visible, leafletLayer, color }
+  descs: [],
+  categoryColors: {},
+  colorPalette: ['#E74C3C','#3498DB','#F39C12','#2ECC71','#9B59B6','#1ABC9C','#E67E22','#E91E63'],
+  colorIdx: 0
+};
+
+const DEFAULT_CONFIG = { logo: 'L', title: 'LINHA LESTE', subtitle: 'Metrô de Fortaleza', color: '#C0392B' };
+const ADMIN_PASSWORD = "admin";
+
+function loadConfig() {
+  let saved = localStorage.getItem('metrofor_sys_config');
+  let config = saved ? JSON.parse(saved) : DEFAULT_CONFIG;
+  applyConfigToUI(config);
+}
+
+function applyConfigToUI(cfg) {
+  document.getElementById('ui-logo-badge').textContent = cfg.logo;
+  document.getElementById('ui-title').textContent = cfg.title;
+  document.getElementById('ui-subtitle').textContent = cfg.subtitle;
+  document.title = `${cfg.title} — ${cfg.subtitle}`;
+  document.getElementById('ui-map-pill').textContent = `${cfg.title} — Ceará`;
+
+  const root = document.documentElement;
+  root.style.setProperty('--red', cfg.color);
+  root.style.setProperty('--red-dark', shadeColor(cfg.color, -20));
+  root.style.setProperty('--red-light', shadeColor(cfg.color, 20));
+
+  document.getElementById('cfg-logo').value = cfg.logo;
+  document.getElementById('cfg-title').value = cfg.title;
+  document.getElementById('cfg-subtitle').value = cfg.subtitle;
+  document.getElementById('cfg-color').value = cfg.color;
+}
+
+function saveConfig() {
+  const cfg = {
+    logo: document.getElementById('cfg-logo').value.trim() || 'L',
+    title: document.getElementById('cfg-title').value.trim() || 'SISTEMA',
+    subtitle: document.getElementById('cfg-subtitle').value.trim(),
+    color: document.getElementById('cfg-color').value
+  };
+  localStorage.setItem('metrofor_sys_config', JSON.stringify(cfg));
+  applyConfigToUI(cfg);
+  closeModal('config-modal');
+  toast('Configurações salvas!', 'success');
+}
+
+// Exporta as descrições e configurações visuais para um .json
+function exportConfigBackup() {
+  const dataToExport = {
+    config: JSON.parse(localStorage.getItem('metrofor_sys_config') || JSON.stringify(DEFAULT_CONFIG)),
+    descs: state.descs
+  };
+  const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'config_mapa.json';
+  a.click();
+  toast('Arquivo config_mapa.json gerado!', 'success');
+}
+
+function openLoginModal() { document.getElementById('login-password').value = ''; document.getElementById('login-modal').classList.add('open'); setTimeout(() => document.getElementById('login-password').focus(), 100); }
+function attemptLogin() { const pass = document.getElementById('login-password').value; if (pass === ADMIN_PASSWORD) { closeModal('login-modal'); document.getElementById('config-modal').classList.add('open'); } else { toast('Senha incorreta!', 'error'); } }
+
+function shadeColor(color, percent) {
+  let R = parseInt(color.substring(1,3),16), G = parseInt(color.substring(3,5),16), B = parseInt(color.substring(5,7),16);
+  R = parseInt(R * (100 + percent) / 100); G = parseInt(G * (100 + percent) / 100); B = parseInt(B * (100 + percent) / 100);
+  R = (R<255)?R:255; G = (G<255)?G:255; B = (B<255)?B:255;
+  return "#"+((R.toString(16).length==1)?"0"+R.toString(16):R.toString(16))+((G.toString(16).length==1)?"0"+G.toString(16):G.toString(16))+((B.toString(16).length==1)?"0"+B.toString(16):B.toString(16));
+}
+
+// ─── MAP ─────────────────────────────────────────────────────────
+const map = L.map('map', { center: [-3.77, -38.52], zoom: 12, zoomControl: true, attributionControl: true });
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19 }).addTo(map);
+
+const measureControl = new L.Control.Measure({ position: 'topright', primaryLengthUnit: 'meters', secondaryLengthUnit: 'kilometers', primaryAreaUnit: 'sqmeters', secondaryAreaUnit: 'hectares', activeColor: '#E74C3C', completedColor: '#C0392B' });
+measureControl.addTo(map);
+
+// ─── DRAG AND DROP & FILE INPUT ──────────────────────────────────
+const lz = document.getElementById('load-zone');
+lz.addEventListener('dragover', e => { e.preventDefault(); lz.classList.add('dragover'); });
+lz.addEventListener('dragleave', () => { lz.classList.remove('dragover'); });
+lz.addEventListener('drop', e => {
+  e.preventDefault(); lz.classList.remove('dragover');
+  const files = Array.from(e.dataTransfer.files).filter(f => /\.(kmz|kml|json)$/i.test(f.name));
+  if (files.length) processFiles(files); else toast('Arquivo não suportado', 'error');
+});
+
+document.getElementById('file-input').addEventListener('change', e => { if (e.target.files.length) { processFiles(Array.from(e.target.files)); e.target.value = ''; } });
+document.getElementById('folder-input').addEventListener('change', e => { if (e.target.files.length) { processFiles(Array.from(e.target.files)); e.target.value = ''; } });
+
+// Pega cor única por categoria
+function getCategoryColor(category) {
+  if (!state.categoryColors[category]) {
+    state.categoryColors[category] = state.colorPalette[state.colorIdx % state.colorPalette.length];
+    state.colorIdx++;
+  }
+  return state.categoryColors[category];
+}
+
+async function processFiles(files) {
+  setStatus('loading', `Carregando ${files.length} arquivo(s)...`);
+  for (const file of files) {
+    try {
+      // Pré-configuração
+      if (file.name.toLowerCase().endsWith('.json')) { await loadJsonConfig(file); continue; }
+
+      // Definição de Categoria (Pega o nome da pasta se existir)
+      let category = "Arquivos Gerais";
+      if (file.webkitRelativePath) {
+        const parts = file.webkitRelativePath.split('/');
+        if (parts.length > 1) category = parts[parts.length - 2]; // Nome da subpasta
+      }
+
+      if (file.name.toLowerCase().endsWith('.kmz')) await loadKMZ(file, category);
+      else if (file.name.toLowerCase().endsWith('.kml')) await loadKML(file, await file.text(), null, category);
+
+    } catch(err) { toast(`Erro ao carregar ${file.name}`, 'error'); console.error(err); }
+  }
+  setStatus('active', `${state.layers.length} camada(s) carregada(s)`);
+  updateLayerCount();
+}
+
+// Leitor de Pré-Configurações (Modo Pen-drive)
+async function loadJsonConfig(file) {
+  const text = await file.text();
+  try {
+    const data = JSON.parse(text);
+    if (data.config) { localStorage.setItem('metrofor_sys_config', JSON.stringify(data.config)); loadConfig(); }
+    if (data.descs) { state.descs = data.descs; saveDescsToStorage(); renderDescs(); }
+    toast('Configurações aplicadas com sucesso!', 'success');
+  } catch(e) { toast('Arquivo de configuração inválido', 'error'); }
+}
+
+async function loadKMZ(file, category) {
+  const zip = await JSZip.loadAsync(file);
+  let kmlContent = null;
+  for (const [name, f] of Object.entries(zip.files)) {
+    if (name.toLowerCase().endsWith('.kml') && !kmlContent) kmlContent = await f.async('string');
+  }
+  if (!kmlContent) throw new Error('KML não encontrado');
+  await loadKML(file, kmlContent, file.name, category);
+}
+
+async function loadKML(file, kmlText, overrideName, category) {
+  const parser = new DOMParser();
+  const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
+  const name = overrideName || (file.name || 'Camada');
+  const color = getCategoryColor(category);
+
+  // Leitura nativa de Descrições do arquivo KML
+  const docDescNode = kmlDoc.querySelector('Document > description');
+  if (docDescNode && docDescNode.textContent) {
+    const rawDesc = docDescNode.textContent.replace(/<[^>]+>/g, '').trim();
+    if (rawDesc && !state.descs.find(d => d.title === name)) {
+      state.descs.push({ id: Date.now() + Math.random(), layerId: 'auto', layerName: category, title: name, text: rawDesc, ts: new Date().toLocaleDateString('pt-BR') });
+      saveDescsToStorage(); renderDescs();
+    }
+  }
+
+  const leafletLayer = parseKMLToLayer(kmlDoc, color);
+  leafletLayer.addTo(map);
+
+  const id = Date.now() + Math.random();
+  const sizeKB = file.size ? Math.round(file.size / 1024) : 0;
+  state.layers.push({ id, name, category, size: sizeKB, visible: true, leafletLayer, color });
+
+  renderLayers(); updateDescSelect(); updateLegend();
+  try { const bounds = leafletLayer.getBounds ? leafletLayer.getBounds() : null; if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40] }); } catch(e) {}
+  toast(`${name} carregado`, 'success');
+}
+
+function parseKMLToLayer(kmlDoc, color) {
+  const group = L.featureGroup();
+  const placemarks = kmlDoc.querySelectorAll('Placemark');
+  placemarks.forEach(pm => {
+    const nameEl = pm.querySelector('name'), descEl = pm.querySelector('description');
+    const pmName = nameEl ? nameEl.textContent.trim() : '', pmDesc = descEl ? descEl.textContent.replace(/<[^>]+>/g, '').trim() : '';
+    const popupContent = `<h3>${pmName || 'Elemento'}</h3>${pmDesc ? `<p>${pmDesc}</p>` : ''}`;
+
+    const pointEl = pm.querySelector('Point coordinates');
+    if (pointEl) { const [lng, lat] = pointEl.textContent.trim().split(',').map(Number); if (!isNaN(lat) && !isNaN(lng)) group.addLayer(L.circleMarker([lat, lng], { radius: 7, color, fillColor: color, fillOpacity: 0.85, weight: 2 }).bindPopup(popupContent)); }
+    const lineEl = pm.querySelector('LineString coordinates');
+    if (lineEl) { const coords = parseCoords(lineEl.textContent); if (coords.length > 1) group.addLayer(L.polyline(coords, { color, weight: 3.5, opacity: 0.9 }).bindPopup(popupContent)); }
+    const polyEl = pm.querySelector('Polygon outerBoundaryIs LinearRing coordinates');
+    if (polyEl) { const coords = parseCoords(polyEl.textContent); if (coords.length > 2) group.addLayer(L.polygon(coords, { color, weight: 2, fillColor: color, fillOpacity: 0.2 }).bindPopup(popupContent)); }
+  });
+  return group;
+}
+
+function parseCoords(text) { return text.trim().split(/\s+/).map(t => { const parts = t.split(',').map(Number); return parts.length >= 2 ? [parts[1], parts[0]] : null; }).filter(Boolean); }
+
+// ─── UI, LEGENDA E TABS ──────────────────────────────────────────
+function renderLayers() {
+  const list = document.getElementById('layer-list'), lbl = document.getElementById('layers-label'), lz = document.getElementById('load-zone');
+  lbl.style.display = state.layers.length ? 'block' : 'none'; 
+  
+  // Agrupar por Categoria
+  const grouped = {};
+  state.layers.forEach(l => { if(!grouped[l.category]) grouped[l.category] = []; grouped[l.category].push(l); });
+
+  list.innerHTML = '';
+  Object.keys(grouped).forEach(cat => {
+    const catColor = state.categoryColors[cat];
+    const catBox = document.createElement('div');
+    catBox.className = 'category-box';
+    
+    // Header da Categoria
+    catBox.innerHTML = `
+      <div class="category-header" onclick="toggleCategoryGroup('${cat}')">
+        <div class="category-title"><div class="category-dot" style="background:${catColor}"></div>${cat}</div>
+        <div style="font-size:11px; color:var(--text3)">${grouped[cat].length} itens</div>
+      </div>
+      <div class="category-items" id="cat-items-${cat.replace(/\s+/g, '-')}"></div>
+    `;
+    list.appendChild(catBox);
+
+    // Itens da Categoria
+    const itemsContainer = catBox.querySelector('.category-items');
+    grouped[cat].forEach(layer => {
+      const div = document.createElement('div');
+      div.className = 'layer-item' + (layer.visible ? ' active-layer' : '');
+      div.innerHTML = `
+        <div class="layer-toggle ${layer.visible ? 'on' : ''}" onclick="toggleLayer('${layer.id}', event)"></div>
+        <div class="layer-info">
+          <div class="layer-name" title="${layer.name}">${layer.name}</div>
+          <div class="layer-actions"><button class="layer-btn" onclick="zoomToLayer('${layer.id}', event)">Zoom</button><button class="layer-btn del" onclick="removeLayer('${layer.id}', event)">Apagar</button></div>
+        </div>`;
+      itemsContainer.appendChild(div);
+    });
+  });
+}
+
+function updateLegend() {
+  const legend = document.getElementById('map-legend');
+  const categories = Object.keys(state.categoryColors).filter(cat => state.layers.some(l => l.category === cat));
+  
+  if (categories.length === 0) { legend.style.display = 'none'; return; }
+  
+  legend.style.display = 'block';
+  legend.innerHTML = '<div class="legend-title">Legenda Dinâmica</div>';
+  categories.forEach(cat => {
+    legend.innerHTML += `<div class="legend-row"><div class="legend-dot" style="background:${state.categoryColors[cat]}"></div>${cat}</div>`;
+  });
+}
+
+function toggleCategoryGroup(catName) {
+  const itemsDiv = document.getElementById(`cat-items-${catName.replace(/\s+/g, '-')}`);
+  if(itemsDiv) itemsDiv.style.display = itemsDiv.style.display === 'none' ? 'flex' : 'none';
+}
+
+function toggleLayer(id, e) {
+  e.stopPropagation(); const layer = state.layers.find(l => l.id == id); if (!layer) return;
+  layer.visible = !layer.visible;
+  if (layer.visible) layer.leafletLayer.addTo(map); else map.removeLayer(layer.leafletLayer);
+  renderLayers();
+}
+
+function zoomToLayer(id, e) {
+  e.stopPropagation(); const layer = state.layers.find(l => l.id == id); if (!layer) return;
+  try { const b = layer.leafletLayer.getBounds(); if (b && b.isValid()) map.fitBounds(b, { padding: [40, 40] }); } catch(err) {}
+}
+
+function removeLayer(id, e) {
+  e.stopPropagation(); const idx = state.layers.findIndex(l => l.id == id); if (idx === -1) return;
+  map.removeLayer(state.layers[idx].leafletLayer); state.layers.splice(idx, 1);
+  renderLayers(); updateLayerCount(); updateDescSelect(); updateLegend();
+  setStatus(state.layers.length ? 'active' : 'idle', state.layers.length ? `${state.layers.length} camada(s) carregada(s)` : 'Nenhum arquivo carregado');
+}
+
+function updateLayerCount() {
+  const n = state.layers.length;
+  document.getElementById('layer-count').textContent = n;
+  document.getElementById('layer-count-label').textContent = n === 1 ? '1 camada' : `${n} camadas`;
+}
+
+function setStatus(type, msg) { document.getElementById('status-dot').className = 'status-dot' + (type === 'active' ? ' active' : type === 'loading' ? ' loading' : ''); document.getElementById('status-text').textContent = msg; }
+function switchTab(tab, btn) { if (tab === 'info') return; document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); document.getElementById('panel-layers').style.display = tab === 'layers' ? 'flex' : 'none'; document.getElementById('panel-desc').style.display = tab === 'desc' ? 'flex' : 'none'; }
+
+// ─── DESCRIÇÕES ──────────────────────────────────────────────────
+function loadDescs() { try { state.descs = JSON.parse(localStorage.getItem('metrofor_descs') || '[]'); } catch(e) { state.descs = []; } }
+function saveDescsToStorage() { localStorage.setItem('metrofor_descs', JSON.stringify(state.descs)); }
+
+function updateDescSelect() {
+  const sel = document.getElementById('desc-layer-sel'), cur = sel.value;
+  sel.innerHTML = '<option value="">— Selecione uma camada —</option>';
+  state.layers.forEach(l => { const opt = document.createElement('option'); opt.value = l.id; opt.textContent = l.name; if (l.id == cur) opt.selected = true; sel.appendChild(opt); });
+}
+
+function saveDesc() {
+  const layerId = document.getElementById('desc-layer-sel').value, title = document.getElementById('desc-title').value.trim(), text = document.getElementById('desc-text').value.trim();
+  if (!title || !text) return toast('Preencha o título e a descrição', 'error');
+  const layer = state.layers.find(l => l.id == layerId);
+  state.descs.push({ id: Date.now(), layerId, layerName: layer ? layer.name : 'Geral', title, text, ts: new Date().toLocaleDateString('pt-BR') });
+  saveDescsToStorage(); document.getElementById('desc-title').value = ''; document.getElementById('desc-text').value = ''; renderDescs(); toast('Descrição salva!', 'success');
+}
+
+function removeDesc(id) { state.descs = state.descs.filter(d => d.id !== id); saveDescsToStorage(); renderDescs(); }
+
+function renderDescs() {
+  const list = document.getElementById('desc-list');
+  if (!state.descs.length) return list.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text3); font-size:13px;">Nenhuma descrição salva.</div>';
+  list.innerHTML = '';
+  [...state.descs].reverse().forEach(d => {
+    const div = document.createElement('div'); div.className = 'desc-card';
+    div.innerHTML = `<button class="desc-card-del" onclick="removeDesc(${d.id})">×</button><div class="desc-card-title">${escHtml(d.title)}</div><div class="desc-card-layer">${escHtml(d.layerName)} · ${d.ts}</div><div class="desc-card-text">${escHtml(d.text)}</div>`;
+    list.appendChild(div);
+  });
+}
+
+function openHelpModal() { document.getElementById('help-modal').classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el => { el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); }); });
+
+let toastTimer;
+function toast(msg, type = '') { const el = document.getElementById('toast'); el.textContent = msg; el.className = type ? `show ${type}` : 'show'; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.className = '', 2800); }
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ─── INIT ────────────────────────────────────────────────────────
+loadConfig(); loadDescs(); renderDescs(); updateDescSelect();
+if (!localStorage.getItem('metrofor_visited')) { localStorage.setItem('metrofor_visited', '1'); setTimeout(openHelpModal, 600); }
+</script>
+</body>
+</html>

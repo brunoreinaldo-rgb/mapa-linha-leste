@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Linha Leste — Metrô de Fortaleza</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- JSZip para descompactar KMZ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<style>
+:root {
+  --red: #C0392B;
+  --red-dark: #922B21;
+  --red-light: #E74C3C;
+  --accent: #F39C12;
+  --bg: #0D0D0D;
+  --surface: #161616;
+  --surface2: #1E1E1E;
+  --surface3: #252525;
+  --border: #2A2A2A;
+  --border2: #333;
+  --text: #F0EDE8;
+  --text2: #9A9590;
+  --text3: #5A5550;
+  --success: #27AE60;
+  --font-head: 'Barlow Condensed', sans-serif;
+  --font-body: 'Barlow', sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── SIDEBAR ── */
+#sidebar {
+  width: 340px;
+  min-width: 280px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 100;
+  position: relative;
+}
+
+#sidebar-header {
+  background: var(--red-dark);
+  padding: 18px 20px 14px;
+  border-bottom: 3px solid var(--red);
+  flex-shrink: 0;
+}
+
+.logo-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.logo-badge {
+  background: var(--red);
+  border: 2px solid rgba(255,255,255,0.2);
+  border-radius: 6px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-head);
+  font-size: 18px;
+  font-weight: 700;
+  color: white;
+  letter-spacing: -1px;
+  flex-shrink: 0;
+}
+
+.logo-text h1 {
+  font-family: var(--font-head);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: white;
+  line-height: 1;
+}
+
+.logo-text p {
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
+  font-weight: 400;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--text3);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.status-dot.active { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.status-dot.loading { background: var(--accent); animation: pulse 1s infinite; }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.status-text {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  flex: 1;
+}
+
+/* ── TABS ── */
+#tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-family: var(--font-head);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 11px 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+  position: relative;
+  top: 1px;
+}
+.tab-btn:hover { color: var(--text2); background: var(--surface2); }
+.tab-btn.active { color: var(--red-light); border-bottom-color: var(--red); background: var(--surface2); }
+
+/* ── PANEL CAMADAS ── */
+#panel-layers {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.load-zone {
+  border: 1.5px dashed var(--border2);
+  border-radius: 8px;
+  padding: 18px 14px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--surface2);
+  margin-bottom: 4px;
+}
+.load-zone:hover { border-color: var(--red); background: rgba(192,57,43,0.05); }
+.load-zone svg { margin-bottom: 8px; opacity: 0.5; }
+.load-zone p { font-size: 12px; color: var(--text2); line-height: 1.5; }
+.load-zone strong { color: var(--text); }
+
+.section-label {
+  font-family: var(--font-head);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text3);
+  padding: 4px 0 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+.layer-item {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+.layer-item:hover { border-color: var(--border2); background: var(--surface3); }
+.layer-item.active-layer { border-color: var(--red); background: rgba(192,57,43,0.08); }
+
+.layer-toggle {
+  width: 34px; height: 18px;
+  background: var(--border2);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.layer-toggle::after {
+  content: '';
+  position: absolute;
+  width: 12px; height: 12px;
+  background: var(--text2);
+  border-radius: 50%;
+  top: 3px; left: 3px;
+  transition: all 0.2s;
+}
+.layer-toggle.on { background: var(--red); }
+.layer-toggle.on::after { left: 19px; background: white; }
+
+.layer-info { flex: 1; min-width: 0; }
+.layer-name {
+  font-family: var(--font-head);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.layer-meta {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+.layer-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-top: 2px;
+}
+.layer-btn {
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  color: var(--text2);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: var(--font-body);
+}
+.layer-btn:hover { background: var(--red); border-color: var(--red); color: white; }
+.layer-btn.del:hover { background: #721c13; border-color: #721c13; }
+
+/* ── PANEL DESCRIÇÕES ── */
+#panel-desc {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.desc-form {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.desc-form label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text3);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.desc-form select,
+.desc-form input[type="text"],
+.desc-form textarea {
+  width: 100%;
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.2s;
+}
+.desc-form select:focus,
+.desc-form input[type="text"]:focus,
+.desc-form textarea:focus { border-color: var(--red); }
+.desc-form textarea { min-height: 80px; }
+
+.save-btn {
+  width: 100%;
+  background: var(--red);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-family: var(--font-head);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.save-btn:hover { background: var(--red-light); }
+.save-btn:active { background: var(--red-dark); }
+
+.desc-list { display: flex; flex-direction: column; gap: 8px; }
+
+.desc-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  position: relative;
+}
+.desc-card-title {
+  font-family: var(--font-head);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--red-light);
+  margin-bottom: 3px;
+}
+.desc-card-layer {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text3);
+  margin-bottom: 8px;
+}
+.desc-card-text {
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.desc-card-del {
+  position: absolute;
+  top: 8px; right: 8px;
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+.desc-card-del:hover { color: var(--red-light); background: rgba(192,57,43,0.15); }
+
+/* ── MAP ── */
+#map-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+}
+
+/* Leaflet dark override */
+.leaflet-container { background: #1a1a1a; font-family: var(--font-body); }
+.leaflet-control-zoom a {
+  background: var(--surface2) !important;
+  border-color: var(--border2) !important;
+  color: var(--text) !important;
+}
+.leaflet-control-zoom a:hover { background: var(--surface3) !important; color: var(--red-light) !important; }
+.leaflet-control-attribution {
+  background: rgba(13,13,13,0.85) !important;
+  color: var(--text3) !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a { color: var(--text2) !important; }
+
+/* ── MAP TOP BAR ── */
+#map-topbar {
+  position: absolute;
+  top: 12px; left: 12px; right: 52px;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.map-pill {
+  background: rgba(13,13,13,0.88);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--text2);
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  backdrop-filter: blur(4px);
+}
+
+.map-pill .count {
+  background: var(--red);
+  color: white;
+  font-family: var(--font-head);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+
+/* ── LEGEND ── */
+#map-legend {
+  position: absolute;
+  bottom: 30px; right: 12px;
+  z-index: 500;
+  background: rgba(13,13,13,0.9);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  min-width: 140px;
+  backdrop-filter: blur(4px);
+}
+.legend-title {
+  font-family: var(--font-head);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 8px;
+}
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text2);
+  margin-bottom: 5px;
+}
+.legend-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── MODAL ── */
+#modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(3px);
+}
+#modal-overlay.open { display: flex; }
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 460px;
+  width: 92%;
+  position: relative;
+}
+.modal h2 {
+  font-family: var(--font-head);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--red-light);
+  margin-bottom: 6px;
+}
+.modal p { font-size: 13px; color: var(--text2); line-height: 1.7; margin-bottom: 12px; }
+.modal code {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--accent);
+}
+.modal-close {
+  position: absolute;
+  top: 14px; right: 14px;
+  background: none; border: none;
+  color: var(--text3);
+  font-size: 22px;
+  cursor: pointer;
+  line-height: 1;
+}
+.modal-close:hover { color: var(--text); }
+
+.dir-tree {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 2;
+  margin-bottom: 14px;
+}
+.dir-tree .dir { color: var(--accent); }
+.dir-tree .file { color: var(--text); }
+.dir-tree .current { color: var(--red-light); font-weight: bold; }
+
+.modal-btn {
+  background: var(--red);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-family: var(--font-head);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-right: 8px;
+}
+.modal-btn:hover { background: var(--red-light); }
+.modal-btn.secondary {
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+}
+.modal-btn.secondary:hover { background: var(--surface2); color: var(--text); }
+
+/* ── TOAST ── */
+#toast {
+  position: fixed;
+  bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 13px;
+  color: var(--text);
+  z-index: 2000;
+  transition: transform 0.3s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.success { border-left: 3px solid var(--success); }
+#toast.error { border-left: 3px solid var(--red); }
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--red); }
+
+/* ── INFO POPUP ── */
+.leaflet-popup-content-wrapper {
+  background: var(--surface) !important;
+  border: 1px solid var(--border2) !important;
+  border-radius: 8px !important;
+  color: var(--text) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+}
+.leaflet-popup-tip { background: var(--surface) !important; }
+.leaflet-popup-content { font-family: var(--font-body); font-size: 13px; min-width: 180px; }
+.leaflet-popup-content h3 {
+  font-family: var(--font-head);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--red-light);
+  margin-bottom: 6px;
+}
+.leaflet-popup-content p { color: var(--text2); line-height: 1.6; }
+
+.empty-state {
+  text-align: center;
+  padding: 30px 20px;
+  color: var(--text3);
+  font-size: 13px;
+}
+
+#file-input { display: none; }
+</style>
+</head>
+<body>
+
+<input type="file" id="file-input" accept=".kmz,.kml" multiple>
+
+<!-- SIDEBAR -->
+<aside id="sidebar">
+  <div id="sidebar-header">
+    <div class="logo-line">
+      <div class="logo-badge">L</div>
+      <div class="logo-text">
+        <h1>LINHA LESTE</h1>
+        <p>Metrô de Fortaleza</p>
+      </div>
+    </div>
+    <div class="status-bar">
+      <div class="status-dot" id="status-dot"></div>
+      <span class="status-text" id="status-text">Nenhum arquivo carregado</span>
+    </div>
+  </div>
+
+  <div id="tab-bar">
+    <button class="tab-btn active" data-tab="layers" onclick="switchTab('layers', this)">Camadas</button>
+    <button class="tab-btn" data-tab="desc" onclick="switchTab('desc', this)">Descrições</button>
+    <button class="tab-btn" data-tab="info" onclick="showModal()">Ajuda</button>
+  </div>
+
+  <!-- TAB: Camadas -->
+  <div id="panel-layers" style="display:flex">
+    <div class="load-zone" onclick="openFileDialog()" id="load-zone">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <p><strong>Carregar KMZ / KML</strong><br>Clique ou arraste arquivos aqui<br><span style="color:var(--text3)">Os arquivos da pasta <code>kmz/</code> serão carregados automaticamente</span></p>
+    </div>
+
+    <div class="section-label" id="layers-label" style="display:none">Camadas ativas</div>
+    <div id="layer-list"></div>
+  </div>
+
+  <!-- TAB: Descrições -->
+  <div id="panel-desc">
+    <div class="desc-form">
+      <label>Camada relacionada</label>
+      <select id="desc-layer-sel">
+        <option value="">— Selecione uma camada —</option>
+      </select>
+      <label>Título</label>
+      <input type="text" id="desc-title" placeholder="Ex: Estação Parangaba">
+      <label>Descrição / Observação</label>
+      <textarea id="desc-text" placeholder="Insira informações, status, observações técnicas..."></textarea>
+      <button class="save-btn" onclick="saveDesc()">Salvar Descrição</button>
+    </div>
+    <div class="section-label">Descrições salvas</div>
+    <div class="desc-list" id="desc-list"></div>
+  </div>
+</aside>
+
+<!-- MAP -->
+<div id="map-container">
+  <div id="map-topbar">
+    <div class="map-pill">
+      <span id="layer-count-label">0 camadas</span>
+      <span class="count" id="layer-count">0</span>
+    </div>
+    <div class="map-pill">Linha Leste — Fortaleza / CE</div>
+  </div>
+  <div id="map"></div>
+  <div id="map-legend">
+    <div class="legend-title">Legenda</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#E74C3C"></div>Linha Leste</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#F39C12"></div>Estações</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#3498DB"></div>Pontos KMZ</div>
+  </div>
+</div>
+
+<!-- MODAL AJUDA -->
+<div id="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <h2>Como usar</h2>
+    <p>Para carregamento automático dos KMZ ao abrir o arquivo, organize assim:</p>
+    <div class="dir-tree">
+      <span class="dir">📁 linha_leste/</span><br>
+      &nbsp;&nbsp;<span class="current">📄 linha_leste_metrofor.html</span><br>
+      &nbsp;&nbsp;<span class="dir">📁 kmz/</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">📄 trecho_parangaba.kmz</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">📄 estacoes_leste.kmz</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">📄 infraestrutura.kml</span>
+    </div>
+    <p><strong>Nota:</strong> Por restrições de segurança do navegador, arquivos locais precisam ser carregados manualmente (clique em "Carregar KMZ/KML"). As <strong>descrições</strong> são salvas automaticamente no navegador via <code>localStorage</code> e persistem entre sessões.</p>
+    <p>Para compartilhamento interno, distribua a pasta completa (HTML + pasta <code>kmz/</code>) em um servidor local ou drive da empresa.</p>
+    <button class="modal-btn" onclick="openFileDialog(); closeModal()">Carregar Arquivos</button>
+    <button class="modal-btn secondary" onclick="closeModal()">Fechar</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────
+const state = {
+  layers: [],   // { id, name, size, visible, leafletLayer, color }
+  descs: [],    // { id, layerId, title, text, ts }
+  layerColors: ['#E74C3C','#F39C12','#3498DB','#2ECC71','#9B59B6','#1ABC9C','#E67E22','#E91E63']
+};
+
+// ─── MAP ─────────────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [-3.77, -38.52],
+  zoom: 12,
+  zoomControl: true,
+  attributionControl: true
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO',
+  subdomains: 'abcd', maxZoom: 19
+}).addTo(map);
+
+// ─── DRAG AND DROP ───────────────────────────────────────────────
+const lz = document.getElementById('load-zone');
+lz.addEventListener('dragover', e => { e.preventDefault(); lz.style.borderColor = 'var(--red)'; });
+lz.addEventListener('dragleave', () => { lz.style.borderColor = ''; });
+lz.addEventListener('drop', e => {
+  e.preventDefault();
+  lz.style.borderColor = '';
+  const files = Array.from(e.dataTransfer.files).filter(f => /\.(kmz|kml)$/i.test(f.name));
+  if (files.length) processFiles(files);
+  else toast('Apenas arquivos .kmz ou .kml são aceitos', 'error');
+});
+
+document.getElementById('file-input').addEventListener('change', e => {
+  if (e.target.files.length) { processFiles(Array.from(e.target.files)); e.target.value = ''; }
+});
+
+function openFileDialog() { document.getElementById('file-input').click(); }
+
+// ─── FILE PROCESSING ─────────────────────────────────────────────
+async function processFiles(files) {
+  setStatus('loading', `Carregando ${files.length} arquivo(s)...`);
+  for (const file of files) {
+    try {
+      if (file.name.toLowerCase().endsWith('.kmz')) await loadKMZ(file);
+      else await loadKML(file, await file.text());
+    } catch(err) {
+      toast(`Erro ao carregar ${file.name}`, 'error');
+      console.error(err);
+    }
+  }
+  setStatus('active', `${state.layers.length} camada(s) carregada(s)`);
+  updateLayerCount();
+}
+
+async function loadKMZ(file) {
+  const zip = await JSZip.loadAsync(file);
+  let kmlContent = null;
+  for (const [name, f] of Object.entries(zip.files)) {
+    if (name.toLowerCase().endsWith('.kml') && !kmlContent) {
+      kmlContent = await f.async('string');
+    }
+  }
+  if (!kmlContent) throw new Error('KML não encontrado dentro do KMZ');
+  await loadKML(file, kmlContent, file.name);
+}
+
+async function loadKML(file, kmlText, overrideName) {
+  const parser = new DOMParser();
+  const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
+  const name = overrideName || (file.name || 'Camada');
+  const color = state.layerColors[state.layers.length % state.layerColors.length];
+
+  const leafletLayer = parseKMLToLayer(kmlDoc, color);
+  leafletLayer.addTo(map);
+
+  const id = Date.now() + Math.random();
+  const sizeKB = file.size ? Math.round(file.size / 1024) : 0;
+  const layer = { id, name, size: sizeKB, visible: true, leafletLayer, color };
+  state.layers.push(layer);
+
+  renderLayers();
+  updateDescSelect();
+
+  // Fit map to layer
+  try {
+    const bounds = leafletLayer.getBounds ? leafletLayer.getBounds() : null;
+    if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40] });
+  } catch(e) {}
+
+  toast(`${name} carregado`, 'success');
+}
+
+function parseKMLToLayer(kmlDoc, color) {
+  const group = L.featureGroup();
+  const placemarks = kmlDoc.querySelectorAll('Placemark');
+
+  placemarks.forEach(pm => {
+    const nameEl = pm.querySelector('name');
+    const descEl = pm.querySelector('description');
+    const pmName = nameEl ? nameEl.textContent.trim() : '';
+    const pmDesc = descEl ? descEl.textContent.replace(/<[^>]+>/g, '').trim() : '';
+
+    const popupContent = `<h3>${pmName || 'Ponto'}</h3>${pmDesc ? `<p>${pmDesc}</p>` : ''}`;
+
+    // Point
+    const pointEl = pm.querySelector('Point coordinates');
+    if (pointEl) {
+      const [lng, lat] = pointEl.textContent.trim().split(',').map(Number);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        const circle = L.circleMarker([lat, lng], {
+          radius: 7, color: color, fillColor: color,
+          fillOpacity: 0.85, weight: 2
+        }).bindPopup(popupContent);
+        group.addLayer(circle);
+      }
+    }
+
+    // LineString
+    const lineEl = pm.querySelector('LineString coordinates');
+    if (lineEl) {
+      const coords = parseCoords(lineEl.textContent);
+      if (coords.length > 1) {
+        const line = L.polyline(coords, { color, weight: 3.5, opacity: 0.9 })
+          .bindPopup(popupContent);
+        group.addLayer(line);
+      }
+    }
+
+    // Polygon
+    const polyEl = pm.querySelector('Polygon outerBoundaryIs LinearRing coordinates');
+    if (polyEl) {
+      const coords = parseCoords(polyEl.textContent);
+      if (coords.length > 2) {
+        const poly = L.polygon(coords, {
+          color, weight: 2, fillColor: color, fillOpacity: 0.2
+        }).bindPopup(popupContent);
+        group.addLayer(poly);
+      }
+    }
+
+    // MultiGeometry
+    const lines = pm.querySelectorAll('MultiGeometry LineString coordinates');
+    lines.forEach(lEl => {
+      const coords = parseCoords(lEl.textContent);
+      if (coords.length > 1) {
+        group.addLayer(L.polyline(coords, { color, weight: 3.5, opacity: 0.9 }).bindPopup(popupContent));
+      }
+    });
+  });
+
+  return group;
+}
+
+function parseCoords(text) {
+  return text.trim().split(/\s+/).map(t => {
+    const parts = t.split(',').map(Number);
+    return parts.length >= 2 ? [parts[1], parts[0]] : null;
+  }).filter(Boolean);
+}
+
+// ─── LAYERS UI ───────────────────────────────────────────────────
+function renderLayers() {
+  const list = document.getElementById('layer-list');
+  const lbl = document.getElementById('layers-label');
+  const lz = document.getElementById('load-zone');
+  lbl.style.display = state.layers.length ? 'block' : 'none';
+  lz.style.display = state.layers.length ? 'none' : 'flex';
+
+  list.innerHTML = '';
+  state.layers.forEach(layer => {
+    const div = document.createElement('div');
+    div.className = 'layer-item' + (layer.visible ? ' active-layer' : '');
+    div.innerHTML = `
+      <div class="layer-toggle ${layer.visible ? 'on' : ''}" onclick="toggleLayer('${layer.id}', event)"></div>
+      <div class="layer-info">
+        <div class="layer-name" title="${layer.name}">${layer.name}</div>
+        <div class="layer-meta">${layer.size > 0 ? layer.size + ' KB' : 'KML'} · <span style="color:${layer.color}">●</span> ${layer.color}</div>
+        <div class="layer-actions">
+          <button class="layer-btn" onclick="zoomToLayer('${layer.id}', event)">Zoom</button>
+          <button class="layer-btn del" onclick="removeLayer('${layer.id}', event)">Remover</button>
+        </div>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function toggleLayer(id, e) {
+  e.stopPropagation();
+  const layer = state.layers.find(l => l.id == id);
+  if (!layer) return;
+  layer.visible = !layer.visible;
+  if (layer.visible) layer.leafletLayer.addTo(map);
+  else map.removeLayer(layer.leafletLayer);
+  renderLayers();
+}
+
+function zoomToLayer(id, e) {
+  e.stopPropagation();
+  const layer = state.layers.find(l => l.id == id);
+  if (!layer) return;
+  try {
+    const b = layer.leafletLayer.getBounds();
+    if (b && b.isValid()) map.fitBounds(b, { padding: [40, 40] });
+  } catch(e) {}
+}
+
+function removeLayer(id, e) {
+  e.stopPropagation();
+  const idx = state.layers.findIndex(l => l.id == id);
+  if (idx === -1) return;
+  map.removeLayer(state.layers[idx].leafletLayer);
+  state.layers.splice(idx, 1);
+  renderLayers();
+  updateLayerCount();
+  updateDescSelect();
+  if (!state.layers.length) setStatus('idle', 'Nenhum arquivo carregado');
+  else setStatus('active', `${state.layers.length} camada(s) carregada(s)`);
+}
+
+function updateLayerCount() {
+  const n = state.layers.length;
+  document.getElementById('layer-count').textContent = n;
+  document.getElementById('layer-count-label').textContent = n === 1 ? '1 camada' : `${n} camadas`;
+}
+
+// ─── STATUS ──────────────────────────────────────────────────────
+function setStatus(type, msg) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  dot.className = 'status-dot' + (type === 'active' ? ' active' : type === 'loading' ? ' loading' : '');
+  txt.textContent = msg;
+}
+
+// ─── TABS ────────────────────────────────────────────────────────
+function switchTab(tab, btn) {
+  if (tab === 'info') return;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-layers').style.display = tab === 'layers' ? 'flex' : 'none';
+  document.getElementById('panel-desc').style.display = tab === 'desc' ? 'flex' : 'none';
+}
+
+// ─── DESCRIPTIONS ────────────────────────────────────────────────
+function loadDescs() {
+  try { state.descs = JSON.parse(localStorage.getItem('metrofor_descs') || '[]'); } catch(e) { state.descs = []; }
+}
+function saveDescsToStorage() {
+  localStorage.setItem('metrofor_descs', JSON.stringify(state.descs));
+}
+
+function updateDescSelect() {
+  const sel = document.getElementById('desc-layer-sel');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Selecione uma camada —</option>';
+  state.layers.forEach(l => {
+    const opt = document.createElement('option');
+    opt.value = l.id;
+    opt.textContent = l.name;
+    if (l.id == cur) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function saveDesc() {
+  const layerId = document.getElementById('desc-layer-sel').value;
+  const title = document.getElementById('desc-title').value.trim();
+  const text = document.getElementById('desc-text').value.trim();
+  if (!title || !text) { toast('Preencha o título e a descrição', 'error'); return; }
+  const layer = state.layers.find(l => l.id == layerId);
+  const desc = {
+    id: Date.now(),
+    layerId, layerName: layer ? layer.name : 'Geral',
+    title, text, ts: new Date().toLocaleDateString('pt-BR')
+  };
+  state.descs.push(desc);
+  saveDescsToStorage();
+  document.getElementById('desc-title').value = '';
+  document.getElementById('desc-text').value = '';
+  renderDescs();
+  toast('Descrição salva!', 'success');
+}
+
+function removeDesc(id) {
+  state.descs = state.descs.filter(d => d.id !== id);
+  saveDescsToStorage();
+  renderDescs();
+}
+
+function renderDescs() {
+  const list = document.getElementById('desc-list');
+  if (!state.descs.length) {
+    list.innerHTML = '<div class="empty-state">Nenhuma descrição cadastrada ainda.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  [...state.descs].reverse().forEach(d => {
+    const div = document.createElement('div');
+    div.className = 'desc-card';
+    div.innerHTML = `
+      <button class="desc-card-del" onclick="removeDesc(${d.id})" title="Remover">×</button>
+      <div class="desc-card-title">${escHtml(d.title)}</div>
+      <div class="desc-card-layer">${escHtml(d.layerName)} · ${d.ts}</div>
+      <div class="desc-card-text">${escHtml(d.text)}</div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+// ─── MODAL ───────────────────────────────────────────────────────
+function showModal() { document.getElementById('modal-overlay').classList.add('open'); }
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target === document.getElementById('modal-overlay')) closeModal(); });
+
+// ─── TOAST ───────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = type ? `show ${type}` : 'show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', 2800);
+}
+
+// ─── UTILS ───────────────────────────────────────────────────────
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── INIT ────────────────────────────────────────────────────────
+loadDescs();
+renderDescs();
+updateDescSelect();
+
+// Welcome modal on first load
+if (!localStorage.getItem('metrofor_visited')) {
+  localStorage.setItem('metrofor_visited', '1');
+  setTimeout(showModal, 600);
+}
+</script>
+</body>
+</html>
